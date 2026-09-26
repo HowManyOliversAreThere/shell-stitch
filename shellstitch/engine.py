@@ -657,28 +657,35 @@ class Sampler:
             del self.cache[k]
 
     def sample(self, k, ry0, ry1, rx0, rx1):
-        """Returns (pixels float32 HxWx3, weight float32 HxW) for output rows/cols given."""
+        """Returns (pixels float32 HxWx3, log blend weight float32 HxW; -inf outside the photo)."""
         m = self.m
         ys = (np.arange(ry0, ry1, dtype=np.float64) / self.scale) + self.y0
         xs = (np.arange(rx0, rx1, dtype=np.float64) / self.scale) + self.x0
         X, Y = np.meshgrid(xs, ys)
         mx, my = m.from_mosaic(k, X, Y)
-        # feather weight from distance to the photo's own border
+        # blend weight: (distance to the photo's own border) ** power, kept as a logarithm
+        # because high powers (sharp seams) underflow floating point far from the centre
         dx = np.minimum(mx + 0.5, m.w - 0.5 - mx) / (m.w / 2)
         dy = np.minimum(my + 0.5, m.h - 0.5 - my) / (m.h / 2)
-        wgt = np.clip(np.minimum(dx, dy), 0, None) ** self.power
+        d = np.minimum(dx, dy)
+        log_wgt = np.full(d.shape, -np.inf, np.float32)
+        inside = d > 0
+        log_wgt[inside] = self.power * np.log(d[inside])
         f = self.shrink
         im = self.image(k)
         px = cv2.remap(im, (mx + 0.5) * f - 0.5, (my + 0.5) * f - 0.5, cv2.INTER_LINEAR,
                        borderMode=cv2.BORDER_REPLICATE)
         px = px.astype(np.float32) * self.photo.factor(k, mx, my)
-        return px, wgt.astype(np.float32)
+        return px, log_wgt
 
 
 def composite(sampler, out, rep, desc, strip=1024, rgb=False):
     """Blend all photos into `out` (H x W x 3 uint8, may be a memmap), strip by strip.
 
-    Pixels are BGR (OpenCV order) unless rgb=True.
+    A weighted average of the photos covering each pixel. Weights are accumulated relative to
+    the largest weight seen so far at each pixel (as in a numerically stable softmax), so any
+    blend sharpness works without weights underflowing to zero. Pixels are BGR (OpenCV
+    order) unless rgb=True.
     """
     H, W = out.shape[:2]
     order = sorted(sampler.boxes, key=lambda k: sampler.boxes[k][1])
@@ -687,18 +694,28 @@ def composite(sampler, out, rep, desc, strip=1024, rgb=False):
         sh = min(strip, H - sy)
         acc = np.zeros((sh, W, 3), np.float32)
         wsum = np.zeros((sh, W), np.float32)
+        top = np.full((sh, W), -np.inf, np.float32)  # largest log weight so far
         for k in order:
             bx0, by0, bx1, by1 = sampler.boxes[k]
             if by1 < sy - 1 or by0 > sy + sh + 1:
                 continue
             cx0, cx1 = max(0, int(bx0) - 1), min(W, int(math.ceil(bx1)) + 2)
             ry0, ry1 = max(sy, int(by0) - 1), min(sy + sh, int(math.ceil(by1)) + 2)
-            px, wgt = sampler.sample(k, ry0, ry1, cx0, cx1)
-            acc[ry0 - sy:ry1 - sy, cx0:cx1] += px * wgt[..., None]
-            wsum[ry0 - sy:ry1 - sy, cx0:cx1] += wgt
+            px, log_wgt = sampler.sample(k, ry0, ry1, cx0, cx1)
+            here = np.isfinite(log_wgt)
+            if not here.any():
+                continue
+            region = (slice(ry0 - sy, ry1 - sy), slice(cx0, cx1))
+            a, w, t = acc[region], wsum[region], top[region]
+            new_top = np.maximum(t[here], log_wgt[here])
+            rescale = np.exp(t[here] - new_top)    # 0 where nothing was here before
+            mine = np.exp(log_wgt[here] - new_top)
+            a[here] = a[here] * rescale[:, None] + px[here] * mine[:, None]
+            w[here] = w[here] * rescale + mine
+            t[here] = new_top
         sampler.forget_above(sy + sh)
         res = np.zeros((sh, W, 3), np.uint8)
-        valid = wsum > 1e-8
+        valid = wsum > 0
         res[valid] = np.clip(acc[valid] / wsum[valid][:, None] + 0.5, 0, 255).astype(np.uint8)
         out[sy:sy + sh] = res[..., ::-1] if rgb else res
 
