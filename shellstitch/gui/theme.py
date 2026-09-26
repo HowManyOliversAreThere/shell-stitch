@@ -92,6 +92,14 @@ QTabBar::tab {{ padding: 7px 14px; border: none; border-bottom: 2px solid transp
                 color: {muted}; }}
 QTabBar::tab:selected {{ color: {text}; border-bottom: 2px solid {accent}; font-weight: 600; }}
 QScrollArea {{ border: none; background: transparent; }}
+QScrollArea > QWidget#qt_scrollarea_viewport, #ScrollContent {{ background: transparent; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {frame}; border-radius: 3px; min-height: 28px; }}
+QScrollBar::handle:horizontal {{ background: {frame}; border-radius: 3px; min-width: 28px; }}
+QScrollBar::handle:hover {{ background: {muted}; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QSplitter::handle {{ background: transparent; }}
 QToolTip {{ border: 1px solid {line}; padding: 5px; }}
 """

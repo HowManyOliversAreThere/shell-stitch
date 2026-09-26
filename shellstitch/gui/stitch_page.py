@@ -97,6 +97,7 @@ class StitchPage(QWidget):
 
         right, rlay = card("Settings")
         self.settings = SettingsForm()
+        self.settings.setObjectName("ScrollContent")
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.settings)
