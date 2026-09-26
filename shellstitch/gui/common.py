@@ -6,8 +6,8 @@ import sys
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                               QStyledItemDelegate, QVBoxLayout, QWidget)
 
 
 def open_path(path):
@@ -57,6 +57,17 @@ class PathPicker(QWidget):
         d = QFileDialog.getExistingDirectory(self, self.dialog_title, start)
         if d:
             self.set_path(d)
+
+
+def combo_box():
+    """A QComboBox whose popup follows the app's style sheet.
+
+    By default Fusion paints combo popup items with a menu-style delegate that ignores style
+    sheets, leaving the highlighted item dark text on a dark background in dark mode.
+    """
+    box = QComboBox()
+    box.setItemDelegate(QStyledItemDelegate(box))
+    return box
 
 
 def card(title=None):

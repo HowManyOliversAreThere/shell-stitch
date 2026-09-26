@@ -4,14 +4,14 @@ import os
 
 from PySide6.QtCore import QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImageReader, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QHeaderView,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView,
                                QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                                QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget,
                                QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import report as rpt
 from . import theme
-from .common import PathPicker, card, muted, open_path, page_header, reveal
+from .common import PathPicker, card, combo_box, muted, open_path, page_header, reveal
 from .image_view import ImageView
 
 
@@ -87,7 +87,7 @@ class ResultsPage(QWidget):
         ll.setContentsMargins(0, 0, 0, 0)
         sort_row = QHBoxLayout()
         sort_row.addWidget(muted("Sort by"))
-        self.sort = QComboBox()
+        self.sort = combo_box()
         self.sort.addItem("Newest first", "newest")
         self.sort.addItem("Name", "name")
         self.sort.setCurrentIndex(max(0, self.sort.findData(QSettings().value("results/sort", "newest"))))

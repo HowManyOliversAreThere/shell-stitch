@@ -75,7 +75,11 @@ QPushButton#Danger {{ color: {bad}; }}
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{ padding: 4px 6px; border: 1px solid {line};
     border-radius: 6px; background: {base}; min-height: 20px; }}
 QComboBox::drop-down {{ border: none; width: 22px; }}
-QComboBox QAbstractItemView {{ border: 1px solid {line}; background: {base}; selection-background-color: {accent}; }}
+QComboBox QAbstractItemView {{ border: 1px solid {line}; background: {base}; color: {text};
+    selection-background-color: {accent}; selection-color: {accent_text}; outline: none; padding: 2px; }}
+QComboBox QAbstractItemView::item {{ min-height: 24px; padding: 0 8px; border-radius: 4px; }}
+QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected {{
+    background: {accent}; color: {accent_text}; }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{ border-color: {accent}; }}
 QGroupBox {{ border: none; border-top: 1px solid {line}; margin-top: 22px; padding: 14px 2px 2px 2px;
              background: transparent; font-weight: 600; }}

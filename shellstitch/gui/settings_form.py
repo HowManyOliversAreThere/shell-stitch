@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout
                                QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget)
 
 from ..options import GROUPS, Options, default_of, option_fields
+from .common import combo_box
 
 
 class SettingsForm(QWidget):
@@ -66,7 +67,7 @@ class SettingsForm(QWidget):
             w.toggled.connect(self.changed)
             return w, None
         if "choices" in m:
-            w = QComboBox()
+            w = combo_box()
             w.addItems(m["choices"])
             w.currentTextChanged.connect(self.changed)
         elif isinstance(default, int):
