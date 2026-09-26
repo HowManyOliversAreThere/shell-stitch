@@ -8,13 +8,19 @@ out. It comes as a desktop app for Windows, macOS and Linux, and as a command-li
 
 ### Download
 
-Ready-built apps are attached to each [GitHub release](../../releases) (built by
+Ready-built apps are attached to each [GitHub release](https://github.com/HowManyOliversAreThere/shell-stitch/releases) (built by
 [`.github/workflows/build.yml`](.github/workflows/build.yml)): unzip and run **ShellStitch**.
 The builds aren't code-signed, so the first launch needs one extra step:
 
 - **macOS**: right-click *ShellStitch.app* and choose *Open*, then *Open* again. If macOS still
   refuses, run `xattr -dr com.apple.quarantine ShellStitch.app` in Terminal.
 - **Windows**: on the SmartScreen warning, choose *More info* and then *Run anyway*.
+
+> [!NOTE]
+> **The Linux build hasn't been tested on a real desktop yet.** CI builds it and runs the
+> automated self-test, but nobody has used it interactively. If you try it, please
+> [open an issue](https://github.com/HowManyOliversAreThere/shell-stitch/issues) to say whether
+> it works, with your distribution and version, and any problems.
 
 ### Using it
 
