@@ -128,11 +128,18 @@ def test_ransac_tolerance(sections, tmp_path):
 
 @covers("solve_time_limit")
 def test_solve_time_limit_stops_early_but_still_stitches(sections, tmp_path):
+    """A limit that's hit stops the solver after its first iteration: the stitch still
+    completes with every photo placed, just less precisely (how much depends on the machine
+    and on randomness in matching, so only a rough layout is checked)."""
     truth = sections["all"]
     result, report, mosaic, rec = stitch(truth, tmp_path, solve_time_limit=0.001)
     assert "time limit" in rec.text()
-    assert result["status"] == "done"
-    assert COVERAGE_OK[0] < evaluate(truth, report, mosaic)["coverage"] < COVERAGE_OK[1]
+    assert result["status"] == "done" and result["placed"] == len(truth.photos)
+    scores = evaluate(truth, report, mosaic)
+    assert scores["pos_err"] < 20 and 0.9 < scores["coverage"] < 1.1, scores
+    # the default limit is far more than a normal section needs
+    _, _, _, normal = stitch(truth, tmp_path / "default")
+    assert "time limit" not in normal.text()
 
 
 @covers("workers")
