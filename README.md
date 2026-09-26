@@ -37,7 +37,8 @@ The builds aren't code-signed, so the first launch needs one extra step:
    - per-photo and per-overlap tables
    - *Export report…* saves the report as an HTML page
 
-Settings and folders are remembered between sessions.
+**Preferences** switches the theme between *System* (follows your computer's light or dark
+mode), *Light* and *Dark*. Settings, folders and the theme are remembered between sessions.
 
 ## Running from source
 

@@ -193,6 +193,11 @@ class StitchPage(QWidget):
         self.outputChanged.emit(self.output.path())
         self.rescan()
 
+    def restyle(self):
+        """Re-colour the section statuses after a theme change (they're coloured in code)."""
+        if not self.is_running():
+            self.rescan()
+
     def _source_changed(self, path):
         if path and not self.output.path():
             self.output.set_path(os.path.join(os.path.dirname(os.path.normpath(path)), "stitched"))

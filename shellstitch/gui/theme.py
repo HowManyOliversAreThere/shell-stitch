@@ -1,7 +1,14 @@
-"""Look and feel: Qt's cross-platform Fusion style with a light/dark palette that follows the OS."""
+"""Look and feel: Qt's cross-platform Fusion style with light and dark palettes.
 
-from PySide6.QtCore import Qt
+The theme follows the OS ("system") unless the user picks light or dark on the Preferences
+page; the choice is saved.
+"""
+
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
+
+MODES = {"system": "System", "light": "Light", "dark": "Dark"}
+_mode = "system"
 
 ACCENT = "#1f7a8c"
 ACCENT_DARK = "#4fb3c8"
@@ -20,7 +27,37 @@ DARK = {
 }
 
 
+def mode():
+    return _mode
+
+
+def load_mode():
+    """The saved theme choice (system/light/dark)."""
+    m = QSettings().value("appearance/theme", "system")
+    return m if m in MODES else "system"
+
+
+def set_mode(app, new_mode, save=True):
+    """Switch between following the OS and forcing light or dark, then restyle the app."""
+    global _mode
+    _mode = new_mode if new_mode in MODES else "system"
+    if save:
+        QSettings().setValue("appearance/theme", _mode)
+    # also tell Qt, so native parts (title bar, file dialogs) match where the platform allows
+    hints = app.styleHints()
+    try:
+        if _mode == "system":
+            hints.unsetColorScheme()
+        else:
+            hints.setColorScheme(Qt.ColorScheme.Dark if _mode == "dark" else Qt.ColorScheme.Light)
+    except AttributeError:  # Qt < 6.8
+        pass
+    apply(app)
+
+
 def is_dark():
+    if _mode != "system":
+        return _mode == "dark"
     return QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
 
 
@@ -72,6 +109,8 @@ QPushButton#Primary {{ background: {accent}; color: {accent_text}; border: none;
                        padding: 8px 20px; }}
 QPushButton#Primary:disabled {{ background: {line}; color: {muted}; }}
 QPushButton#Danger {{ color: {bad}; }}
+QPushButton#Segment {{ padding: 6px 18px; min-width: 60px; }}
+QPushButton#Segment:checked {{ background: {accent}; color: {accent_text}; border-color: {accent}; font-weight: 600; }}
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{ padding: 4px 6px; border: 1px solid {line};
     border-radius: 6px; background: {base}; min-height: 20px; }}
 QComboBox::drop-down {{ border: none; width: 22px; }}

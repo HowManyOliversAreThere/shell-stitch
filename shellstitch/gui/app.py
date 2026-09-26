@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, 
 from .. import REPO_URL, __version__
 from . import theme
 from .common import page_header
+from .preferences_page import PreferencesPage
 from .results_page import ResultsPage
 from .stitch_page import StitchPage
 
@@ -91,6 +92,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stitch = StitchPage()
         self.results = ResultsPage()
+        self.preferences = PreferencesPage()
         about = QWidget()
         about.setObjectName("Page")
         al = QVBoxLayout(about)
@@ -103,7 +105,7 @@ class MainWindow(QMainWindow):
 
         self.nav = QButtonGroup(self)
         for i, (name, page) in enumerate((("Stitch", self.stitch), ("Results", self.results),
-                                          ("About", about))):
+                                          ("Preferences", self.preferences), ("About", about))):
             b = QPushButton(name)
             b.setObjectName("NavButton")
             b.setCheckable(True)
@@ -139,6 +141,8 @@ class MainWindow(QMainWindow):
         self.stitch.sectionStitched.connect(lambda name: self.results.refresh(keep=True))
         self.stitch.viewResults.connect(self.show_result)
         self.stitch.runningChanged.connect(self._running_changed)
+        self.preferences.themeChanged.connect(self._set_theme)
+        QGuiApplication.styleHints().colorSchemeChanged.connect(self._os_theme_changed)
 
         self.settings = QSettings()
         self._restore()
@@ -152,6 +156,20 @@ class MainWindow(QMainWindow):
         self.results.set_output_dir(self.stitch.output.path())
         self.results.show_section(name)
         self.go(1)
+
+    def _set_theme(self, mode):
+        theme.set_mode(QApplication.instance(), mode)
+        self._restyle()
+
+    def _os_theme_changed(self, _scheme):
+        if theme.mode() == "system":
+            theme.apply(QApplication.instance())
+            self._restyle()
+
+    def _restyle(self):
+        """Redraw the parts coloured in code rather than by the style sheet."""
+        self.stitch.restyle()
+        self.results.refresh(keep=True)
 
     def _running_changed(self, running):
         self.setWindowTitle(f"{APP_NAME}: stitching…" if running else APP_NAME)
@@ -195,8 +213,7 @@ def main():
     QApplication.setApplicationVersion(__version__)
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource("icon.png")))
-    theme.apply(app)
-    app.styleHints().colorSchemeChanged.connect(lambda _: theme.apply(app))
+    theme.set_mode(app, theme.load_mode(), save=False)
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
