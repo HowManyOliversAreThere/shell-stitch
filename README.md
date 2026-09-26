@@ -115,6 +115,10 @@ the value used is in the report and the TIFF.
 | `shellstitch/selftest.py` | End-to-end test on synthetic photos: `uv run python -m shellstitch.selftest --gui`. |
 | `packaging/` | PyInstaller build and icon source. |
 
+[CI](.github/workflows/ci.yml) lints the code (`uv run ruff check .`) and runs the self-test on
+Windows, macOS and Linux for every pull request and push to `main`. Release builds only run
+once those checks pass.
+
 Build the standalone app for the current platform (PyInstaller can't cross-compile, so CI
 builds each platform on its own runner):
 

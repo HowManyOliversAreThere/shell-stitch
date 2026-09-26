@@ -1,4 +1,4 @@
-# Builds the standalone Shell Stitch app for Windows, macOS and Linux.
+# Builds the standalone Shell Stitch app for Windows, macOS and Linux, after the CI checks pass.
 # Runs on every push of a version tag (v1.2.3), which also publishes a GitHub release,
 # and can be started by hand from the Actions tab.
 name: Build apps
@@ -9,7 +9,11 @@ on:
   workflow_dispatch:
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: ci
     strategy:
       fail-fast: false
       matrix:
