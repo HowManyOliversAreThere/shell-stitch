@@ -8,12 +8,15 @@ ideal) and how closely it matches the true scene (mae, grey levels). See helpers
 import os
 from dataclasses import fields
 
+import cv2
+import numpy as np
 import pytest
 import tifffile
 
 from helpers import COVERED, NONDEFAULT, covers, evaluate, stitch
+from shellstitch.engine import find_scale_bar
 from shellstitch.options import Options
-from shellstitch.synthetic import make_section
+from shellstitch.synthetic import make_section, write_calibration
 
 # Limits for a correct stitch of the synthetic sections (typical values are ~3-10x lower).
 POS_OK = 0.5      # px
@@ -229,6 +232,52 @@ def test_output_files(sections, tmp_path):
         # the resolution tag carries the calibration (pixels per cm)
         x_res = page.tags["XResolution"].value
         assert x_res[0] / x_res[1] == pytest.approx(1e4 / truth.um_per_px, rel=1e-3)
+
+
+def bar_centre_in_mosaic(truth, report):
+    """Where the copy's scale bar should land: its spot in the photo it was copied from (rigidly)."""
+    bar = truth.scale_bar
+    image = next(i for i in report["images"] if i["file"] == bar["photo"])
+    x, y, w, h = bar["box"]
+    pw, ph = truth.photo_size
+    offset = np.array([x + w / 2 - pw / 2, y + h / 2 - ph / 2])
+    th = np.radians(image["rotation_deg"])
+    R = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
+    return np.asarray(image["centre_xy"]) + R @ offset
+
+
+@covers("scale_bar")
+def test_scale_bar_from_copy_is_pasted_at_scale(sections, tmp_path):
+    truth = sections["all"]
+    result, on, mosaic, rec = stitch(truth, tmp_path / "on")
+    assert [b["file"] for b in on["scale_bars"]] == truth.skipped_by_default
+    bar = on["scale_bars"][0]
+    assert bar["photo"] == truth.scale_bar["photo"]
+    assert bar["length_px"] == truth.scale_bar["length_px"]
+    assert bar["length_um"] == pytest.approx(1000, abs=1)
+    x, y, w, h = bar["box_xywh"]
+    # a few px of slack: the prediction ignores the lens distortion near the photo's corner
+    assert np.hypot(*(np.array([x + w / 2, y + h / 2]) - bar_centre_in_mosaic(truth, on))) < 5
+    # the full-resolution mosaic and the preview both carry the bar, the same length as in the photo
+    found = find_scale_bar(np.ascontiguousarray(mosaic[y:y + h, x:x + w]))
+    assert found is not None and found[4] == truth.scale_bar["length_px"]
+    preview = cv2.imread(result["outputs"]["preview"])
+    s = on["preview_width_px"] / on["width_px"]
+    crop = preview[int(y * s):int((y + h) * s) + 1, int(x * s):int((x + w) * s) + 1].astype(float)
+    assert np.abs(np.median(crop.reshape(-1, 3), 0) - [43, 54, 101]).max() < 15  # mostly bar colour
+    assert "scale bar from image - Copy.tif" in rec.text()
+
+    _, off, mosaic_off, _ = stitch(truth, tmp_path / "off", scale_bar=False)
+    assert off["scale_bars"] == []
+    assert find_scale_bar(np.ascontiguousarray(mosaic_off[y:y + h, x:x + w])) is None
+
+
+def test_scale_bar_at_another_magnification_is_left_out(tmp_path):
+    truth = make_section(str(tmp_path / "zoomed-copy"), copy=True)
+    write_calibration(os.path.join(truth.folder, "image - Copy.tif"), 8.0, *truth.photo_size)
+    _, report, _, rec = stitch(truth, tmp_path / "out", preview_only=True)
+    assert report["scale_bars"] == []
+    assert "different magnification" in rec.text()
 
 
 @covers("preview_width")

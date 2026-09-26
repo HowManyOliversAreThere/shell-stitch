@@ -279,6 +279,139 @@ def fit_pair(p, q, min_inliers, ransac_px):
     return p[inl], q[inl], math.atan2(M[1, 0], M[0, 0]), M[:, 2] / scale
 
 
+# ----------------------------------------------------------------------------- scale bar
+
+SCALE_BAR_COPIES = "* - Copy.*"  # LAS saves a photo with its scale bar burned in under this name
+
+
+def find_scale_bar(im):
+    """The scale bar LAS burns into a photo: (patch BGR, mask, x, y, bar length px) or None.
+
+    LAS draws a solid-colour bar, the length written on it in white, with a thin white line
+    under it. A real photo never has a solid colour over a patch this size except where it's
+    clipped to black or white, so the bar is the largest bar-shaped area of one exact colour.
+    The bar's length is the width of that area; the patch includes the text and the line.
+    """
+    k = np.ones((5, 5), np.uint8)
+    flat = (cv2.erode(im, k) == cv2.dilate(im, k)).all(-1)
+    flat &= ~(im <= 5).all(-1) & ~(im >= 250).all(-1)
+    if flat.sum() < 100:
+        return None
+    packed = im[flat].astype(np.int64) @ [1, 256, 65536]
+    colours, counts = np.unique(packed, return_counts=True)
+    best = None
+    for c in colours[np.argsort(counts)[::-1][:3]]:
+        fill = (im.astype(np.int64) @ [1, 256, 65536]) == c
+        # close the gaps the text leaves; padded so the closing can't run into the image edge
+        closed = cv2.morphologyEx(np.pad(fill.astype(np.uint8), 8), cv2.MORPH_CLOSE,
+                                  np.ones((15, 15), np.uint8))[8:-8, 8:-8]
+        n, _, stats, _ = cv2.connectedComponentsWithStats(closed)
+        for x, y, w, h, area in stats[1:]:
+            box = fill[y:y + h, x:x + w]
+            if w >= 40 and h >= 6 and w >= 3 * h and area >= 0.9 * w * h and box.mean() >= 0.5:
+                if best is None or w * h > best[2] * best[3]:
+                    best = (x, y, w, h)
+    if best is None:
+        return None
+    x, y, w, h = best
+    # antialiased edges and the white line under the bar lie just outside the solid fill
+    m = 3
+    px0, py0 = max(0, x - m), max(0, y - m)
+    px1, py1 = min(im.shape[1], x + w + m), min(im.shape[0], y + h + m)
+    patch = im[py0:py1, px0:px1].copy()
+    mask = np.zeros(patch.shape[:2], bool)
+    mask[y - py0:y - py0 + h, x - px0:x - px0 + w] = True
+    below = mask[y + h - py0:, x - px0:x - px0 + w]  # the white line under the bar
+    below[:] = patch[y + h - py0:, x - px0:x - px0 + w].min(-1) >= 128
+    return patch, mask, px0, py0, w
+
+
+def locate_scale_bars(folder, paths, feats, um_per_px, opts, px_scale, rep):
+    """Finds the '- Copy' photos with a burned-in scale bar and the photo each one shows.
+
+    A copy isn't always identical to the photo it's named after (LAS may have rotated it or
+    adjusted its colour first), so it is matched by features like any other overlap. Returns
+    [{file, photo (index into paths), bar (find_scale_bar result), centre (bar centre in that
+    photo's pixels)}].
+    """
+    copies = [p for p in list_images(folder, []) if fnmatch.fnmatch(os.path.basename(p), SCALE_BAR_COPIES)
+              and p not in paths]
+    found = []
+    for path in copies:
+        rep.check()
+        file = os.path.basename(path)
+        bar = find_scale_bar(read_image(path))
+        if bar is None:
+            rep.log(f"    no scale bar found in {file}")
+            continue
+        fc = extract_features(path, opts.match_width, opts.features)
+        if fc[2] != feats[0][2]:
+            rep.log(f"    {file} is a different size from the photos; its scale bar was not used", "warning")
+            continue
+        cal = leica_um_per_px(path, fc[2][0])
+        if cal and um_per_px and round(cal, 3) != um_per_px:
+            rep.log(f"    {file} was taken at a different magnification ({cal:.2f} µm/px, the photos are "
+                    f"{um_per_px:.2f} µm/px); its scale bar was not used", "warning")
+            continue
+        namesake = os.path.basename(path).replace(" - Copy", "")
+        order = sorted(range(len(paths)), key=lambda k: os.path.basename(paths[k]) != namesake)
+        best = None
+        for k in order:
+            m = fit_pair(*raw_matches(feats[k], fc, opts.min_inliers), opts.min_inliers,
+                         opts.ransac_px * px_scale)
+            if m is not None and (best is None or len(m[0]) > len(best[1][0])):
+                best = (k, m)
+            if best is not None and best[0] == order[0] and len(best[1][0]) >= 50:
+                break  # it matches the photo it's named after: no need to look further
+        if best is None:
+            rep.log(f"    could not tell which photo {file} shows; its scale bar was not used", "warning")
+            continue
+        k, (_, _, theta, t) = best
+        patch, _, bx, by, _ = bar
+        centre = np.array([bx + patch.shape[1] / 2 - 0.5, by + patch.shape[0] / 2 - 0.5])
+        found.append({"file": file, "photo": k, "bar": bar, "centre": rot(theta) @ centre + t})
+    return found
+
+
+def place_scale_bars(bars, model, x0, y0, W, H):
+    """Where each scale bar goes in the mosaic: the spot it had in its photo, kept level.
+
+    Mosaic pixels are photo pixels, so the bar is pasted 1:1 and stays at scale. Bars whose
+    photo wasn't placed are dropped. Returns [(bar dict, left, top)] in mosaic pixels.
+    """
+    placed = []
+    for b in bars:
+        if b["photo"] not in model.poses:
+            continue
+        patch = b["bar"][0]
+        h, w = patch.shape[:2]
+        cx, cy = model.to_mosaic(b["photo"], [b["centre"]])[0] - [x0, y0]
+        left = int(np.clip(round(cx - w / 2), 0, max(0, W - w)))
+        top = int(np.clip(round(cy - h / 2), 0, max(0, H - h)))
+        placed.append((b, left, top))
+    return placed
+
+
+def paste_scale_bars(out, placed, scale=1.0, rgb=False):
+    """Draw the scale bars onto a mosaic (or a preview at `scale`)."""
+    H, W = out.shape[:2]
+    for b, left, top in placed:
+        patch, mask = b["bar"][0], b["bar"][1].astype(np.float32)
+        if rgb:
+            patch = patch[..., ::-1]
+        if scale != 1.0:
+            size = (max(1, round(patch.shape[1] * scale)), max(1, round(patch.shape[0] * scale)))
+            patch = cv2.resize(patch, size, interpolation=cv2.INTER_AREA)
+            mask = cv2.resize(mask, size, interpolation=cv2.INTER_AREA)
+            left, top = round(left * scale), round(top * scale)
+        h, w = min(patch.shape[0], H - top), min(patch.shape[1], W - left)
+        if h <= 0 or w <= 0:
+            continue
+        a = mask[:h, :w, None]
+        region = out[top:top + h, left:left + w].astype(np.float32)
+        out[top:top + h, left:left + w] = np.clip(region * (1 - a) + patch[:h, :w] * a + 0.5, 0, 255).astype(np.uint8)
+
+
 # ----------------------------------------------------------------------------- camera model
 
 def rot(theta):
@@ -917,6 +1050,7 @@ def stitch_folder(folder, opts=None, rep=None):
 
     px_scale = max(1.0, size[0] / opts.match_width)
     model, edges, res, ref = align(feats, size, opts, px_scale, names, rep)
+    bars = locate_scale_bars(folder, paths, feats, um_per_px, opts, px_scale, rep) if opts.scale_bar else []
     del feats
     rep.log(f"    initial alignment: typical error {np.median(res):.2f}px ({time.time() - t0:.0f}s)")
     if opts.refine:
@@ -932,6 +1066,11 @@ def stitch_folder(folder, opts=None, rep=None):
     x0, y0 = np.floor(outline.min(0))
     x1, y1 = np.ceil(outline.max(0))
     W, H = int(x1 - x0) + 1, int(y1 - y0) + 1
+    bars = place_scale_bars(bars, model, x0, y0, W, H)
+    for b, _, _ in bars:
+        length = b["bar"][4]
+        at = f" = {length * um_per_px / 1000:.3g} mm" if um_per_px else ""
+        rep.log(f"    scale bar from {b['file']} ({length}px{at}) added where it was in {names[b['photo']]}")
 
     if opts.gain:
         rep.busy("Correcting exposure and illumination")
@@ -946,6 +1085,7 @@ def stitch_folder(folder, opts=None, rep=None):
     ps = min(1.0, opts.preview_width / W)
     prev = np.zeros((max(1, round(H * ps)), max(1, round(W * ps)), 3), np.uint8)
     composite(Sampler(model, paths, photo, x0, y0, ps, power), prev, rep, "Rendering preview", strip=512)
+    paste_scale_bars(prev, bars, ps)
     cv2.imwrite(out["preview"], prev, [cv2.IMWRITE_JPEG_QUALITY, 90])
     layout = prev.copy()
     fs = max(0.35, prev.shape[1] / 5000)
@@ -982,6 +1122,10 @@ def stitch_folder(folder, opts=None, rep=None):
                     "gain_bgr": [round(float(g), 4) for g in photo.gains(k)]} for k in placed],
         "unplaced": missing,
         "excluded": excluded,
+        "scale_bars": [{"file": b["file"], "photo": names[b["photo"]], "length_px": int(b["bar"][4]),
+                        "length_um": round(b["bar"][4] * um_per_px, 1) if um_per_px else None,
+                        "box_xywh": [left, top, b["bar"][0].shape[1], b["bar"][0].shape[0]]}
+                       for b, left, top in bars],
         "overlaps": [{"a": names[e["i"]], "b": names[e["j"]], "matches": len(e["p"]),
                       "error_px": round(float(r), 3)} for e, r in zip(edges, res)],
         "options": opts.to_dict(),
@@ -1013,6 +1157,7 @@ def stitch_folder(folder, opts=None, rep=None):
         mm = tifffile.memmap(tmp, shape=(H, W, 3), dtype=np.uint8, photometric="rgb",
                              bigtiff=W * H * 3 > 3.9e9, description=desc, **kw)
         composite(Sampler(model, paths, photo, x0, y0, 1.0, power), mm, rep, "Writing mosaic", rgb=True)
+        paste_scale_bars(mm, bars, rgb=True)
         mm.flush()
         del mm
         os.replace(tmp, out["tif"])

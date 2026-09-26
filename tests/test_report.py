@@ -23,6 +23,7 @@ def test_summary(stitched):
     assert facts["Photos placed"].startswith(f"{len(truth.photos)} of {len(truth.photos)}")
     assert "1 more left out" in facts["Photos placed"]
     assert "µm per pixel" in facts["Resolution"]
+    assert facts["Scale bar"] == "1 mm bar from image - Copy.tif, placed where it was in image0000.tif"
 
 
 def test_warnings(stitched):

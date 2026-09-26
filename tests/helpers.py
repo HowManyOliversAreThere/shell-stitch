@@ -32,6 +32,7 @@ NONDEFAULT = {
     "gain": False,
     "flat": False,
     "output": "some/other/folder",
+    "scale_bar": False,
     "preview_width": 2500,
     "preview_only": True,
     "skip_existing": True,
@@ -122,6 +123,8 @@ def evaluate(truth, report, mosaic=None):
         covered = mosaic.max(2) > 0
         scores["coverage"] = covered.sum() / truth.footprint_area()
         use = covered & in_scene
+        for x, y, bw, bh in (b["box_xywh"] for b in report.get("scale_bars", [])):
+            use[y:y + bh, x:x + bw] = False  # pasted on top of the scene on purpose
         use = cv2.erode(use.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0  # ignore edge interpolation
         m, s = mosaic[use].astype(np.float64), expected[use]
         k = (m * s).sum(0) / (s * s).sum(0)

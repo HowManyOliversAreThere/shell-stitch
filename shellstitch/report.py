@@ -148,6 +148,9 @@ def facts(r):
         rows.append(("Resolution", f"{r['um_per_px']:.3f} µm per pixel (from microscope metadata)"))
     else:
         rows.append(("Resolution", "No calibration found: sizes are in pixels only"))
+    for b in r.get("scale_bars", []):
+        size = f"{b['length_um'] / 1000:.3g} mm" if b.get("length_um") else f"{b['length_px']} px"
+        rows.append(("Scale bar", f"{size} bar from {b['file']}, placed where it was in {b['photo']}"))
     rows.append(("Typical misalignment", error_text(r, r["median_error_px"])))
     ov = r.get("overlaps", [])
     if ov:

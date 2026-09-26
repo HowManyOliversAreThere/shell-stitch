@@ -26,7 +26,7 @@ class Options:
     exclude: list[str] = _opt(
         ["* - Copy.*"], "Skip files matching",
         "Filename patterns to ignore (wildcards allowed). The default skips the '* - Copy' "
-        "duplicates that have a burned-in scale bar.",
+        "duplicates that have a burned-in scale bar (see 'Add the scale bar').",
         "Input", cli="--exclude", kind="patterns")
 
     # Alignment
@@ -92,6 +92,11 @@ class Options:
         "stitched", "Output folder",
         "Where mosaics, previews and reports are written.",
         "Output", cli="-o/--output", kind="dir", gui=False)
+    scale_bar: bool = _opt(
+        True, "Add the scale bar from '- Copy' photos",
+        "LAS saves a '- Copy' of a photo with a scale bar burned in. Paste that bar, at scale, "
+        "into the mosaic and preview where it was in that photo.",
+        "Output", cli="--no-scale-bar")
     preview_width: int = _opt(
         4000, "Preview width (px)",
         "Width of the preview and layout JPEGs.",

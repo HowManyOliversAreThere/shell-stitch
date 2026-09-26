@@ -9,7 +9,8 @@ something to correct:
 - `gains`: exposure / white-balance differences between photos
 - `vignette`: a lighting falloff shared by all photos
 - `dust`: dark specks fixed to the camera (the same place in every photo)
-- `copy`: an "image - Copy.tif" duplicate with a burned-in scale bar (skipped by default)
+- `copy`: an "image - Copy.tif" duplicate with a burned-in 1 mm scale bar (skipped as a photo by
+  default, but its scale bar is pasted into the mosaic)
 - `odd_zoom`: one extra photo taken at a different magnification (should be left out)
 
 Everything is generated from a seed, so datasets are reproducible and license-free.
@@ -38,6 +39,7 @@ class Truth:
     um_per_px: float | None = None
     excluded: list = field(default_factory=list)  # files a correct stitch leaves out
     skipped_by_default: list = field(default_factory=list)  # files the default exclude skips
+    scale_bar: dict | None = None  # the copy's burned-in bar: {photo, length_px, box (x, y, w, h)}
 
     def footprint_area(self):
         """Area (scene px) covered by the union of the photos: what the mosaic should cover."""
@@ -153,7 +155,13 @@ def make_section(folder, rows=2, cols=3, size=(400, 300), overlap=0.38, seed=0, 
 
     if copy:  # duplicate of the first photo with a burned-in scale bar, as LAS exports it
         im = cv2.imread(os.path.join(folder, truth.photos[0]["file"]))
-        cv2.rectangle(im, (w - 90, h - 14), (w - 20, h - 10), (40, 40, 200), -1)
+        length = round(1000 / (um_per_px or 10.0))  # 1 mm
+        x, y, bh = w - 20 - length, h - 30, 18
+        cv2.rectangle(im, (x, y), (x + length - 1, y + bh - 1), (43, 54, 101), -1)
+        cv2.putText(im, "1 mm", (x + length // 2 - 18, y + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+                    (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.line(im, (x, y + bh), (x + length - 1, y + bh), (255, 255, 255), 1)
+        truth.scale_bar = {"photo": truth.photos[0]["file"], "length_px": length, "box": (x, y, length, bh)}
         name = "image - Copy.tif"
         cv2.imwrite(os.path.join(folder, name), im)
         if um_per_px:

@@ -68,6 +68,16 @@ For each section `NAME`, the output folder receives:
 
 A typical section takes under a minute to a few minutes, depending on the number of photos.
 
+### Scale bar
+
+LAS saves a `NAME - Copy.tif` of a photo with its scale bar burned in. These copies aren't
+stitched as photos, but their scale bar is pasted into the TIFF and the preview, level and at
+1:1 scale, at the spot it had in that photo. The copy doesn't have to be identical to the photo
+(LAS may have rotated it or changed its colour), as it is matched by features. A copy taken at a
+different magnification from the mosaic is skipped, since its bar would be the wrong length. The
+report lists each bar with its length in pixels and, when calibrated, in µm, as a check against
+the label. Turn it off with *Add the scale bar from '- Copy' photos* (`--no-scale-bar`).
+
 ### What to check
 
 - **Typical misalignment** is how far matching points in overlapping photos disagree after
