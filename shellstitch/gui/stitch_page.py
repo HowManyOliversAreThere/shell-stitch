@@ -410,8 +410,6 @@ class StitchPage(QWidget):
         if it:
             if status in ("done", "preview"):
                 text = "Done" if status == "done" else "Done (preview only)"
-                if "median_error_px" in res:
-                    text += f" · {res['median_error_px']:.2f} px"
                 left_out = len(res.get("unplaced", [])) + len(res.get("excluded", []))
                 if left_out:
                     text += f" · {left_out} photo{'s' if left_out > 1 else ''} left out"
