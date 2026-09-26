@@ -9,7 +9,7 @@ from PySide6.QtGui import QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton,
                                QStackedWidget, QTextBrowser, QVBoxLayout, QWidget)
 
-from .. import __version__
+from .. import REPO_URL, __version__
 from . import theme
 from .common import page_header
 from .results_page import ResultsPage
@@ -47,6 +47,10 @@ are shared by all photos and estimated at the same time. False matches are disca
 <li><code>NAME_report.json</code>: alignment details (shown on the Results page)</li>
 </ul>
 <p>The same engine is available from the command line: <code>shellstitch --help</code>.</p>
+<h3>Source code, updates and issues</h3>
+<p><a href="{REPO_URL}">{REPO_URL}</a><br>
+New versions are published on the <a href="{REPO_URL}/releases">releases page</a>; please report
+problems or suggestions as <a href="{REPO_URL}/issues">issues</a>.</p>
 <h3>License</h3>
 <p>{APP_NAME} is open-source software released under the MIT License.<br>
 Copyright © 2026 Oliver Robson.</p>
