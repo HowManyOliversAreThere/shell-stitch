@@ -35,7 +35,7 @@ NONDEFAULT = {
     "preview_width": 2500,
     "preview_only": True,
     "skip_existing": True,
-    "workers": 3,
+    "workers": (os.cpu_count() or 4) + 1,  # the default is the CPU count, so never equal to it
 }
 
 
