@@ -5,7 +5,7 @@ import os
 import sys
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton,
                                QStackedWidget, QTextBrowser, QVBoxLayout, QWidget)
 
@@ -109,9 +109,21 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(page)
         self.nav.idClicked.connect(self.go)
         sl.addStretch()
-        self.version = QLabel(f"v{__version__}")
-        self.version.setObjectName("AppSubtitle")
-        sl.addWidget(self.version)
+        footer = QHBoxLayout()
+        footer.setContentsMargins(16, 0, 16, 0)
+        footer.setSpacing(8)
+        logo = QLabel()
+        pm = QPixmap(resource("icon.png"))
+        if not pm.isNull():
+            dpr = self.devicePixelRatioF()
+            pm = pm.scaled(int(32 * dpr), int(32 * dpr), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pm.setDevicePixelRatio(dpr)
+            logo.setPixmap(pm)
+        self.version = QLabel(f"{APP_NAME}\nv{__version__}")
+        self.version.setObjectName("Muted")
+        footer.addWidget(logo)
+        footer.addWidget(self.version, 1)
+        sl.addLayout(footer)
 
         lay.addWidget(side)
         lay.addWidget(self.stack, 1)
