@@ -1,10 +1,7 @@
-# Mac
+images/
 .DS_Store
-
-# Python
 .venv/
 __pycache__/
-
-# Data
 stitched/
-images/
+build/
+dist/

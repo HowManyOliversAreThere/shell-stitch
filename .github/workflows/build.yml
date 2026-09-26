@@ -1,0 +1,93 @@
+# Builds the standalone Shell Stitch app for Windows, macOS and Linux.
+# Runs on every push of a version tag (v1.2.3), which also publishes a GitHub release,
+# and can be started by hand from the Actions tab.
+name: Build apps
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: ShellStitch-windows-x64
+          - os: macos-latest
+            name: ShellStitch-macos-arm64
+          - os: ubuntu-22.04
+            name: ShellStitch-linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Qt system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-keysyms1 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libfontconfig1 libdbus-1-3
+
+      - name: Install
+        run: uv sync --frozen --group build
+
+      - name: Build
+        run: uv run --frozen --group build pyinstaller --noconfirm packaging/shellstitch.spec
+
+      - name: Self-test the built app (macOS / Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            dist/ShellStitch.app/Contents/MacOS/ShellStitch --self-test
+          else
+            dist/ShellStitch/ShellStitch --self-test
+          fi
+
+      - name: Self-test the built app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $p = Start-Process dist\ShellStitch\ShellStitch.exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "self-test failed with exit code $($p.ExitCode)" }
+
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ditto -c -k --keepParent ShellStitch.app "../${{ matrix.name }}.zip"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            7z a -tzip "../${{ matrix.name }}.zip" ShellStitch
+          else
+            tar czf "../${{ matrix.name }}.tar.gz" ShellStitch
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}.*
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ShellStitch-*
+          generate_release_notes: true

@@ -1,12 +1,39 @@
 [project]
-name = "shell-section-images"
-version = "0.1.0"
+name = "shellstitch"
+dynamic = ["version"]
+description = "Automatic stitching of overlapping microscope photos of shell sections for sclerochronology"
+readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Oliver Robson" }]
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.5.3",
     "opencv-python-headless>=5.0.0.93",
+    "pyside6-essentials>=6.11.2",
     "scipy>=1.18.1",
     "tifffile>=2026.9.20",
     "tqdm>=4.70.1",
 ]
+
+[project.scripts]
+shellstitch = "shellstitch.cli:main"
+
+[project.gui-scripts]
+shellstitch-gui = "shellstitch.gui.app:main"
+
+[dependency-groups]
+build = [
+    "pillow>=12.3.0",
+    "pyinstaller>=6.22.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "shellstitch/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shellstitch"]

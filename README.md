@@ -1,94 +1,137 @@
-# Shell section stitcher
+# Shell Stitch
 
 Automatically stitches the overlapping microscope photos of a shell section into one
-full-resolution image for sclerochronology. One folder of photos in, one mosaic out.
+full-resolution, calibrated image for sclerochronology. One folder of photos in, one mosaic
+out. It comes as a desktop app for Windows, macOS and Linux, and as a command-line tool.
 
-## Setup (once)
+## Desktop app
 
-Needs [uv](https://docs.astral.sh/uv/) (already installed on this machine). It creates the
-Python environment automatically on first run.
+### Download
 
-## Usage
+Ready-built apps are attached to each [GitHub release](../../releases) (built by
+[`.github/workflows/build.yml`](.github/workflows/build.yml)): unzip and run **ShellStitch**.
+The builds aren't code-signed, so the first launch needs one extra step:
+
+- **macOS**: right-click *ShellStitch.app* and choose *Open*, then *Open* again. If macOS still
+  refuses, run `xattr -dr com.apple.quarantine ShellStitch.app` in Terminal.
+- **Windows**: on the SmartScreen warning, choose *More info* and then *Run anyway*.
+
+### Using it
+
+1. **Stitch** page: choose the *photos folder*, which is the folder holding one subfolder of
+   overlapping photos per section, and an *output folder*.
+2. Tick the sections to stitch. *Not yet stitched* selects only the new ones.
+3. Adjust settings if needed. Every setting has a tooltip; *Show advanced settings* reveals
+   the rest.
+4. *Start stitching*. Progress is shown for every stage, including live solver status.
+   *Skip section* abandons a section that is taking too long and moves on; *Cancel* stops.
+5. **Results** page: browse the mosaics (scroll to zoom, drag to pan, with a scale bar and a
+   cursor position in mm). Toggle the photo outlines, and read each section's report:
+   - a summary with an alignment verdict and warnings
+   - per-photo and per-overlap tables
+   - *Export report…* saves the report as an HTML page
+
+Settings and folders are remembered between sessions.
+
+## Running from source
+
+Needs [uv](https://docs.astral.sh/uv/). It creates the Python environment automatically.
 
 ```bash
-uv run stitch.py images/M27                # one section
+uv run shellstitch-gui                     # the desktop app
+uv run stitch.py images/M27                # command line: one section
 uv run stitch.py images/*/                 # every folder in images/
-uv run stitch.py /path/to/new/shells/*/    # any other set of folders
 uv run stitch.py images/*/ --skip-existing # only folders not stitched yet
 ```
 
-For each folder `NAME`, the `stitched/` folder receives:
+On the command line, press Ctrl-C once to skip the section being stitched, and twice quickly
+to stop. `uv run stitch.py --help` lists every option; they are the same settings as in the
+app.
+
+## Outputs
+
+For each section `NAME`, the output folder receives:
 
 | File | What it is |
 |---|---|
 | `NAME.tif` | Full-resolution mosaic (uncompressed RGB TIFF, opens in Fiji/ImageJ, Photoshop, Illustrator). Its resolution tag carries the Leica µm/pixel calibration, so physical size is correct (in Fiji: *Image ▸ Properties* shows the scale). |
 | `NAME_preview.jpg` | ~4000 px wide preview for a quick look. |
 | `NAME_layout.jpg` | Preview with every photo's outline and number drawn on, for checking placement. |
-| `NAME_report.json` | Calibration, alignment error, each photo's position/rotation, and any photos that couldn't be placed. |
+| `NAME_report.json` | Calibration, alignment quality, each photo's position/rotation, photos that were left out and why, and the settings used. The app shows it in readable form. |
 
-A typical folder takes 1–2 minutes.
+A typical section takes under a minute to a few minutes, depending on the number of photos.
 
 ### What to check
 
-The console prints a line like
-`aligned 56/56 images using 186 overlaps, typical error 0.42px`.
-
-- **Typical error** is how far matching points in overlapping photos disagree after
-  alignment, in pixels. Below ~1 px (small images) or ~2 px (the 3648 px wide images) is
-  normal.
-- **could not place …** lists photos with no reliable overlap with the rest. These are
-  often stray shots, such as a photo of a different area or with different lighting. Look at
-  them before assuming anything is wrong. If a genuine photo is left out, its neighbours
-  probably overlap it too little; retaking with more overlap (about 30 %) is the reliable
-  fix.
+- **Typical misalignment** is how far matching points in overlapping photos disagree after
+  alignment. Below ~1 px (1024 px wide photos) or ~2 px (3648 px wide photos) is normal. The
+  app rates it for you.
+- **Photos left out**:
+  - *No reliable overlap*: often a stray shot, such as a different area or lighting. If a
+    genuine photo is left out, retake it with more overlap (about 30 %).
+  - *Different magnification or image size*: the photos were taken at another zoom setting
+    and can't be combined at the same scale. Stitch them separately in their own folder.
 
 ## How it works
 
 1. **Feature matching**: SIFT features are found in every photo (contrast-enhanced so the
    smooth nacre still yields features) and every photo is matched against every other, so
    capture order and scan pattern don't matter.
-2. **Global alignment**: all matches are solved together by least squares. The model is
+2. **Camera-fixed features are ignored**: dust or scratches on the optics or stage glass and
+   light-source glare stay put while the sample moves. Wherever features match at zero offset
+   across several photo pairs, they are discarded. Otherwise they pull photos together
+   wrongly, which matters especially in transmitted light.
+3. **Global alignment**: all matches are solved together by least squares. The model is
    physical. The sample moves rigidly under a fixed camera (rotation + translation per
    photo, **no scaling**, so distances stay measurable). The camera's slight oblique view and
    lens distortion are shared by every photo and estimated at the same time. Inconsistent
-   (false) matches are detected and discarded.
-3. **Full-resolution refinement**: each overlap is re-measured at full resolution with
+   (false) matches are detected and discarded. Each solve has a time limit, so a difficult
+   section can't hold up a batch.
+4. **Full-resolution refinement**: each overlap is re-measured at full resolution with
    phase correlation, and the solve is repeated.
-4. **Illumination correction**: one smooth illumination pattern shared by all photos
+5. **Illumination correction**: one smooth illumination pattern shared by all photos
    (uneven lighting or vignetting) and a brightness/colour gain for each photo are estimated
    from the overlaps and divided out. This removes the tile-to-tile brightness steps that
    could otherwise be mistaken for bands in intensity profiles.
-5. **Blending**: photos are feathered together near their seams and written in strips, so
+6. **Blending**: photos are feathered together near their seams and written in strips, so
    large mosaics don't need much memory.
 
 ### Calibration note
 
-LAS writes each photo's calibration to `.Metadata/<name>.eax`, but it records it for the
-image size in that file. In M72 and M74 that is 1024 px, although the photos were saved at
-3648 px. The script rescales the value to the real width. That gives 3.27 µm/px for those
-two sections; the raw metadata says 11.64, which would be wrong. The value used is in the
-report and the TIFF.
+LAS writes each photo's calibration to `.Metadata/<name>.eax`, but for the image size recorded
+in that file, which isn't always the size the photo was saved at. For example, it can record
+a 1024 px calibration on a 3648 px capture. Shell Stitch rescales the value to the real width;
+the value used is in the report and the TIFF.
 
-## Options
+## Development
 
-```text
---blend seam          near-hard seams instead of smooth feathering (never doubles a line,
-                      but exposure steps may show)
---feather-power N     width of feathered transitions: higher = narrower (default 3)
---exclude PATTERN     skip files matching PATTERN (default already skips "* - Copy.*",
-                      which are duplicates of image.tif with a burned-in scale bar)
---no-gain             no exposure/illumination correction at all (raw pixel values)
---no-flat             per-photo gains only, no illumination-pattern correction
---no-perspective      rigid alignment only (don't model camera tilt/lens distortion)
---no-refine           skip the full-resolution refinement pass (faster)
---preview-only        only write the preview/layout/report (fast check)
--n, --skip-existing   skip folders whose mosaic already exists in the output folder
-                      (delete a mosaic to have it redone)
--o DIR                output folder (default: stitched)
+| Path | Contents |
+|---|---|
+| `shellstitch/engine.py` | Stitching engine (matching, alignment, illumination, blending). |
+| `shellstitch/options.py` | Every setting, defined once; the CLI flags and the app's settings form are generated from it. |
+| `shellstitch/report.py` | Human-readable interpretation of `NAME_report.json`. |
+| `shellstitch/cli.py` | Command line. `stitch.py` is a shortcut to it. |
+| `shellstitch/gui/` | Desktop app (PySide6 / Qt 6). |
+| `shellstitch/selftest.py` | End-to-end test on synthetic photos: `uv run python -m shellstitch.selftest --gui`. |
+| `packaging/` | PyInstaller build and icon source. |
+
+Build the standalone app for the current platform (PyInstaller can't cross-compile, so CI
+builds each platform on its own runner):
+
+```bash
+uv run --group build pyinstaller --noconfirm packaging/shellstitch.spec
 ```
 
-Run `uv run stitch.py --help` for the full list.
+The result is in `dist/`. Check a build with `ShellStitch --self-test`: it stitches synthetic
+photos with the packaged engine and exits with 0 on success. To publish a release, push a
+version tag (e.g. `git tag v0.2.0 && git push --tags`). The workflow builds, self-tests and
+attaches Windows, macOS and Linux downloads.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The app bundles open-source components under their own
+licenses, listed on its About page:
+- Qt/PySide6: LGPL-3.0, dynamically linked, so the Qt libraries can be replaced
+- OpenCV: Apache-2.0
+- NumPy, SciPy and tifffile: BSD
+- tqdm: MPL-2.0/MIT
