@@ -88,3 +88,7 @@ report and the TIFF.
 ```
 
 Run `uv run stitch.py --help` for the full list.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
