@@ -40,5 +40,8 @@ jobs:
       - name: Command line starts
         run: uv run --frozen stitch.py --help
 
-      - name: End-to-end self-test (engine and GUI)
+      - name: Tests (every setting, against synthetic sections with a known truth)
+        run: uv run --frozen pytest -q
+
+      - name: End-to-end self-test (engine and GUI, as run by packaged builds)
         run: uv run --frozen python -m shellstitch.selftest --gui

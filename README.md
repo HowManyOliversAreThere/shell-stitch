@@ -119,12 +119,37 @@ the value used is in the report and the TIFF.
 | `shellstitch/report.py` | Human-readable interpretation of `NAME_report.json`. |
 | `shellstitch/cli.py` | Command line. `stitch.py` is a shortcut to it. |
 | `shellstitch/gui/` | Desktop app (PySide6 / Qt 6). |
-| `shellstitch/selftest.py` | End-to-end test on synthetic photos: `uv run python -m shellstitch.selftest --gui`. |
+| `shellstitch/synthetic.py` | Synthetic sections with a known ground truth, for the tests and the self-test. |
+| `shellstitch/selftest.py` | Quick end-to-end check, also built into the app: `uv run python -m shellstitch.selftest --gui`. |
+| `tests/` | Test suite (`uv run pytest`). |
 | `packaging/` | PyInstaller build and icon source. |
 
-[CI](.github/workflows/ci.yml) lints the code (`uv run ruff check .`) and runs the self-test on
-Windows, macOS and Linux for every pull request and push to `main`. Release builds only run
-once those checks pass.
+### Tests
+
+```bash
+uv run pytest
+```
+
+The tests run the real engine on **synthetic sections with a known ground truth**, generated
+in code by [`shellstitch/synthetic.py`](shellstitch/synthetic.py), so no real sample images
+are needed or included. The synthetic photos are cut from a procedurally generated "shell" at
+known positions and rotations. Optionally they add the imperfections the settings exist to
+correct: camera tilt and lens distortion, exposure differences, vignetting or one-sided
+lighting, dust on the optics, a burned-in-scale-bar duplicate, and a photo at a different
+magnification.
+
+Each setting is checked by its *effect*, not just that it runs:
+- photos are placed within half a pixel of the truth
+- the mosaic covers exactly the photos' footprint
+- the mosaic matches the true scene pixel for pixel
+- turning a correction off makes the result it's responsible for measurably worse
+
+`test_option_coverage` fails if a setting is added without such a test. The command line and
+the settings form are checked to pass every setting through unchanged.
+
+[CI](.github/workflows/ci.yml) lints the code (`uv run ruff check .`) and runs the tests and
+the self-test on Windows, macOS and Linux for every pull request and push to `main`. Release
+builds only run once those checks pass.
 
 Build the standalone app for the current platform (PyInstaller can't cross-compile, so CI
 builds each platform on its own runner):
