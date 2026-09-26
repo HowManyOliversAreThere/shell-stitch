@@ -720,10 +720,16 @@ def composite(sampler, out, rep, desc, strip=1024, rgb=False):
         out[sy:sy + sh] = res[..., ::-1] if rgb else res
 
 
+N_FLAT = 5  # linear + quadratic terms
+
+
 def _flat_basis(xn, yn):
-    """Smooth 2D polynomial terms (no constant) describing uneven illumination."""
-    return np.stack([xn, yn, xn * xn, xn * yn, yn * yn,
-                     xn ** 3, xn * xn * yn, xn * yn * yn, yn ** 3], -1)
+    """Smooth illumination pattern terms (no constant): linear and quadratic.
+
+    That covers one-sided lighting and vignetting. Cubic terms were tried and dropped: on
+    photos dominated by glare they overfit it and the exposure gains then went wild.
+    """
+    return np.stack([xn, yn, xn * xn, xn * yn, yn * yn], -1)
 
 
 class Photometric:
@@ -735,7 +741,7 @@ class Photometric:
     def __init__(self, model, log_gains=None, flat=None):
         self.m = model
         self.log_gains = log_gains or {k: np.zeros(3) for k in model.poses}
-        self.flat = np.zeros(9) if flat is None else flat
+        self.flat = np.zeros(N_FLAT) if flat is None else flat
 
     def factor(self, k, mx, my):
         xn = (mx - self.m.c[0]) / self.m.cw
@@ -758,7 +764,7 @@ class Photometric:
             imgs[k] = cv2.GaussianBlur(im.astype(np.float32), (0, 0), 1.5)
         keys = sorted(m.poses)
         col = {k: n for n, k in enumerate(keys)}
-        nf = 9 if fit_flat else 0
+        nf = N_FLAT if fit_flat else 0
 
         def sample(k, X):
             mx, my = m.from_mosaic(k, X[:, 0], X[:, 1])
@@ -809,8 +815,14 @@ class Photometric:
             M = hstack([coo_matrix(-B), G]).tocsr()
         else:
             M = G.tocsr()
-        # weak priors keep gains near 1 and the flat field near uniform
-        lam = np.sqrt(n_eq / (n_g + nf)) * 0.05
+        # Weak priors towards "no correction". When photos mostly translate, a lighting
+        # gradient and a smooth exposure trend across photos look almost the same in the
+        # overlaps; only the photos' rotations tell them apart. Strong priors decide that in
+        # advance (inventing lighting patterns from exposure differences, or leaving real
+        # gradients in), while none at all lets glare-heavy transmitted-light photos drive
+        # the corrections to implausible values. This strength handles both; see
+        # tests/test_stitching.py (synthetic exposure/gradient/vignette cases) before changing.
+        lam = np.sqrt(n_eq / (n_g + nf)) * 5e-3
         prior = identity(nf + n_g, format="csr") * lam
         w = np.ones(n_eq)
         for _ in range(5):  # iteratively reweighted: highlights/reflections differ between shots
@@ -819,7 +831,7 @@ class Photometric:
             res = M @ sol - y
             scale = 1.4826 * np.median(np.abs(res)) + 1e-6
             w = 1 / np.sqrt(np.maximum(1, np.abs(res) / (2 * scale)))
-        flat = sol[:nf] if nf else np.zeros(9)
+        flat = sol[:nf] if nf else np.zeros(N_FLAT)
         g = sol[nf:].reshape(-1, 3)
         g -= np.median(g, 0)  # overall brightness follows the typical photo
         return cls(model, {k: g[col[k]] for k in keys}, flat)
