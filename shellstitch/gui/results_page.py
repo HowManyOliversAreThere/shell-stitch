@@ -2,9 +2,9 @@
 
 import os
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImageReader, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QHeaderView,
                                QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                                QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget,
                                QTextBrowser, QVBoxLayout, QWidget)
@@ -80,13 +80,26 @@ class ResultsPage(QWidget):
 
         split = QSplitter(Qt.Horizontal)
         split.setChildrenCollapsible(False)
+        left = QWidget()
+        left.setMinimumWidth(290)
+        left.setMaximumWidth(400)
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        sort_row = QHBoxLayout()
+        sort_row.addWidget(muted("Sort by"))
+        self.sort = QComboBox()
+        self.sort.addItem("Newest first", "newest")
+        self.sort.addItem("Name", "name")
+        self.sort.setCurrentIndex(max(0, self.sort.findData(QSettings().value("results/sort", "newest"))))
+        self.sort.currentIndexChanged.connect(self._sort_changed)
+        sort_row.addWidget(self.sort, 1)
+        ll.addLayout(sort_row)
         self.list = QListWidget()
         self.list.setIconSize(QSize(112, 64))
         self.list.setSpacing(2)
-        self.list.setMinimumWidth(280)
-        self.list.setMaximumWidth(380)
         self.list.currentRowChanged.connect(self._select)
-        split.addWidget(self.list)
+        ll.addWidget(self.list, 1)
+        split.addWidget(left)
 
         self.detail_stack = QStackedWidget()
         self.empty = muted("No stitched sections here yet. Stitch some on the Stitch page, or choose "
@@ -202,7 +215,7 @@ class ResultsPage(QWidget):
 
     def refresh(self, keep=False, select=None):
         name = select or (self.current["section"] if keep and self.current else None)
-        self.reports = rpt.find_reports(self.output_dir())
+        self.reports = rpt.find_reports(self.output_dir(), self.sort.currentData())
         self.list.blockSignals(True)
         self.list.clear()
         c = theme.colors()
@@ -213,12 +226,13 @@ class ResultsPage(QWidget):
             if r.get("um_per_px"):
                 lines.append(f"{r['width_px'] * r['um_per_px'] / 1000:.1f} × "
                              f"{r['height_px'] * r['um_per_px'] / 1000:.1f} mm")
+            lines.append("Stitched " + rpt.fmt_when(r["_stitched"]))
             it = QListWidgetItem("\n".join(lines))
             it.setIcon(QIcon(thumbnail(r["_outputs"]["preview"])))
             it.setToolTip(r["_path"])
             if level in ("warn", "bad") or r.get("unplaced"):
                 it.setForeground(QColor(c["warn"]))
-            it.setSizeHint(QSize(0, 76))
+            it.setSizeHint(QSize(0, 20 * len(lines) + 12))
             self.list.addItem(it)
         self.list.blockSignals(False)
         self.detail_stack.setCurrentIndex(1 if self.reports else 0)
@@ -228,6 +242,10 @@ class ResultsPage(QWidget):
             self._select(idx)
         else:
             self.current = None
+
+    def _sort_changed(self):
+        QSettings().setValue("results/sort", self.sort.currentData())
+        self.refresh(keep=True)
 
     def show_section(self, name):
         self.refresh(select=name)

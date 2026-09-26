@@ -19,11 +19,31 @@ def load(path):
     r.setdefault("section", os.path.basename(path).removesuffix("_report.json"))
     r["_path"] = path
     r["_outputs"] = output_paths(os.path.dirname(path), r["section"])
+    r["_stitched"] = stitched_at(r)
     return r
 
 
-def find_reports(output_dir):
-    """All reports in an output folder, newest first."""
+def stitched_at(r):
+    """When the section was stitched (report timestamp, else the report file's modification time)."""
+    try:
+        return datetime.fromisoformat(r["created"])
+    except (KeyError, TypeError, ValueError):
+        return datetime.fromtimestamp(os.path.getmtime(r["_path"]))
+
+
+def fmt_when(dt, now=None):
+    """'today 11:51', 'yesterday 09:02' or '26 Sep 2026, 11:51'."""
+    now = now or datetime.now()
+    days = (now.date() - dt.date()).days
+    if days == 0:
+        return f"today {dt:%H:%M}"
+    if days == 1:
+        return f"yesterday {dt:%H:%M}"
+    return f"{dt.day} {dt:%b %Y, %H:%M}"
+
+
+def find_reports(output_dir, order="newest"):
+    """All reports in an output folder, newest first or ("name") alphabetically."""
     if not output_dir or not os.path.isdir(output_dir):
         return []
     found = []
@@ -34,6 +54,8 @@ def find_reports(output_dir):
             except (OSError, ValueError):
                 continue
     found.sort(key=lambda r: r["section"].lower())
+    if order == "newest":
+        found.sort(key=lambda r: r["_stitched"], reverse=True)
     return found
 
 
