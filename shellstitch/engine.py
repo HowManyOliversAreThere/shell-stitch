@@ -944,7 +944,7 @@ def stitch_folder(folder, opts=None, rep=None):
 
     # preview + layout diagram first, so problems are visible before the long full-res pass
     ps = min(1.0, opts.preview_width / W)
-    prev = np.zeros((int(H * ps) + 1, int(W * ps) + 1, 3), np.uint8)
+    prev = np.zeros((max(1, round(H * ps)), max(1, round(W * ps)), 3), np.uint8)
     composite(Sampler(model, paths, photo, x0, y0, ps, power), prev, rep, "Rendering preview", strip=512)
     cv2.imwrite(out["preview"], prev, [cv2.IMWRITE_JPEG_QUALITY, 90])
     layout = prev.copy()
