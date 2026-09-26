@@ -14,6 +14,7 @@ class SettingsForm(QWidget):
         super().__init__(parent)
         self._widgets = {}
         self._advanced_rows = []
+        self._groups = []  # (group box, number of settings that are always shown)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
 
@@ -52,6 +53,8 @@ class SettingsForm(QWidget):
                     row = (form, w, lbl)
                 if f.metadata.get("advanced"):
                     self._advanced_rows.append((box, row))
+            n_basic = sum(not f.metadata.get("advanced") for f in by_group[group])
+            self._groups.append((box, n_basic))
             lay.addWidget(box)
         lay.addStretch()
         self._update_advanced(False)
@@ -93,6 +96,9 @@ class SettingsForm(QWidget):
             w.setVisible(show)
             if lbl is not None:
                 lbl.setVisible(show)
+        # hide groups left with nothing to show (e.g. Performance when advanced settings are hidden)
+        for box, n_basic in self._groups:
+            box.setVisible(show or n_basic > 0)
 
     def set_options(self, opts):
         for name, w in self._widgets.items():
