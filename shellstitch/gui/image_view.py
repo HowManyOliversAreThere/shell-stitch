@@ -3,8 +3,49 @@
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
-from PySide6.QtWidgets import QFrame, QGraphicsPixmapItem, QGraphicsScene, QGraphicsView
+from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtWidgets import QFrame, QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QWidget
+
+
+class ScaleBar(QWidget):
+    """Scale bar overlay, fixed to the view's bottom-left corner.
+
+    A separate widget rather than painted into the scene: QGraphicsView scrolls by moving
+    already-painted pixels, which would drag anything drawn over the image along with it.
+    """
+
+    MARGIN = 14
+
+    def __init__(self, view):
+        super().__init__(view)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.length_px, self.label = 0.0, ""
+        self.hide()
+
+    def set_scale(self, units_per_screen_px, unit):
+        target = 140 * units_per_screen_px
+        mag = 10 ** math.floor(math.log10(target))
+        length = max(m * mag for m in (1, 2, 5) if m * mag <= target)  # a "nice" 1/2/5 length
+        self.length_px = length / units_per_screen_px
+        self.label = f"{length:g} {unit}" if length >= 1 else f"{length * 1000:g} µm"
+        text_w = self.fontMetrics().horizontalAdvance(self.label)
+        self.resize(int(max(self.length_px, text_w)) + 20, 36)
+        vp = self.parent().viewport().geometry()
+        self.move(vp.left() + self.MARGIN, vp.bottom() - self.height() - self.MARGIN)
+        self.show()
+        self.raise_()
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(0, 0, 0, 150))
+        p.drawRoundedRect(QRectF(self.rect()), 6, 6)
+        p.setBrush(QColor("white"))
+        p.drawRect(QRectF(10, self.height() - 12, self.length_px, 4))
+        p.setPen(QColor("white"))
+        p.drawText(QPointF(10, self.height() - 18), self.label)
 
 
 class ImageView(QGraphicsView):
@@ -29,6 +70,8 @@ class ImageView(QGraphicsView):
         self.units_per_pixel = None  # real-world size of one image pixel
         self.unit = "mm"
         self.message = ""
+        self.scale_bar = ScaleBar(self)
+        self.zoomChanged.connect(self._update_scale_bar)
 
     def set_background(self, color):
         self.setBackgroundBrush(QColor(color))
@@ -43,6 +86,7 @@ class ImageView(QGraphicsView):
         self.scene().setSceneRect(QRectF(pm.rect()))
         if not same_size:
             self.fit()
+        self._update_scale_bar()
         self.viewport().update()
 
     def has_image(self):
@@ -84,6 +128,13 @@ class ImageView(QGraphicsView):
         super().resizeEvent(event)
         if self._fitted:
             self.fit()
+        self._update_scale_bar()
+
+    def _update_scale_bar(self, *_):
+        if self.units_per_pixel and self.has_image():
+            self.scale_bar.set_scale(self.units_per_pixel / self.zoom(), self.unit)
+        else:
+            self.scale_bar.hide()
 
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
@@ -103,30 +154,7 @@ class ImageView(QGraphicsView):
         painter.save()
         painter.resetTransform()
         vp = self.viewport().rect()
-        if self.message:
+        if self.message:  # only shown when there's no image, so nothing scrolls under it
             painter.setPen(QColor("#9aa3ab"))
             painter.drawText(vp, Qt.AlignCenter, self.message)
-        elif self.units_per_pixel and self.has_image():
-            self._draw_scale_bar(painter, vp)
         painter.restore()
-
-    def _draw_scale_bar(self, painter, vp):
-        units_per_screen_px = self.units_per_pixel / self.zoom()
-        target = 140 * units_per_screen_px
-        mag = 10 ** math.floor(math.log10(target))
-        length = max(m * mag for m in (1, 2, 5) if m * mag <= target)  # a "nice" 1/2/5 length
-        px = length / units_per_screen_px
-        label = f"{length:g} {self.unit}" if length >= 1 else f"{length * 1000:g} µm"
-        painter.setRenderHint(QPainter.Antialiasing)
-        font = QFont(painter.font())
-        font.setPointSizeF(max(9.0, font.pointSizeF()))
-        painter.setFont(font)
-        tw = painter.fontMetrics().horizontalAdvance(label)
-        box = QRectF(14, vp.height() - 50, max(px, tw) + 20, 36)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 150))
-        painter.drawRoundedRect(box, 6, 6)
-        painter.setBrush(QColor("white"))
-        painter.drawRect(QRectF(box.left() + 10, box.bottom() - 12, px, 4))
-        painter.setPen(QColor("white"))
-        painter.drawText(QPointF(box.left() + 10, box.bottom() - 18), label)
